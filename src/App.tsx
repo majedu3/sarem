@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion } from "motion/react";
 import { SuspectAvatar } from "./components/SuspectAvatar";
+import { cases } from "./cases";
 import {
   Shield,
   FileText,
@@ -202,9 +203,31 @@ export default function App() {
           const firstUnprocessed = data.find((s: Suspect) => !processedIds[s.id]);
           setSelectedSuspect(firstUnprocessed || data[0]);
         }
+      } else {
+        throw new Error("Server response not OK");
       }
     } catch (error) {
-      console.error("Error fetching suspects:", error);
+      console.error("Error fetching suspects, falling back to local cases data:", error);
+      const sanitized = cases.map((c) => ({
+        id: c.id,
+        name: c.name,
+        arabicName: c.arabicName,
+        avatarSeed: c.avatarSeed,
+        nationality: c.nationality,
+        arabicNationality: c.arabicNationality,
+        age: c.age,
+        gender: c.gender as "male" | "female",
+        purpose: c.purpose,
+        arabicPurpose: c.arabicPurpose,
+        behavior: c.behavior,
+        arabicBehavior: c.arabicBehavior,
+        documents: c.documents,
+      }));
+      setSuspects(sanitized);
+      if (sanitized.length > 0) {
+        const firstUnprocessed = sanitized.find((s: any) => !processedIds[s.id]);
+        setSelectedSuspect(firstUnprocessed || sanitized[0]);
+      }
     } finally {
       setLoadingSuspects(false);
     }
@@ -278,28 +301,105 @@ export default function App() {
         setPhysicalCue(safePhysicalCue);
         playSound("beep");
       } else {
-        const errData = await res.json().catch(() => ({}));
-        setMessages(prev => [
-          ...prev,
-          {
-            role: "model",
-            text: errData.error || "آسف، حدث انقطاع في الاتصال مع جهاز التحقيق اللحظي.",
-            physicalCue: "تومض الشاشة باللون الأحمر مرتين"
-          }
-        ]);
-        playSound("alert");
+        throw new Error("Server responded with error code");
       }
     } catch (err) {
-      console.error(err);
+      console.warn("Using local client-side interrogation fallback:", err);
+      // Local fallback interrogation response
+      const query = questionText.toLowerCase();
+      let reply = "أنا... لا أدري ماذا أقول. (يبدو المشتبه به صامتاً)";
+      let localStress = 25;
+      let localHeart = 75;
+      let localCue = "ينظر إليك بهدوء.";
+
+      // Let's find the current case in cases
+      const currentCase = cases.find(c => c.id === selectedSuspect.id);
+      if (currentCase) {
+        const isGuilty = currentCase.expectedVerdict === "arrest" || currentCase.expectedVerdict === "reject";
+        
+        if (query.includes("هدف") || query.includes("سبب") || query.includes("purpose") || query.includes("زيارت")) {
+          reply = `أنا قادم لغرض: ${currentCase.arabicPurpose}`;
+          localStress = isGuilty ? 45 : 20;
+          localHeart = isGuilty ? 85 : 72;
+          localCue = isGuilty ? "يتحرك في مكانه بقلق طفيف." : "يجيب بابتسامة هادئة.";
+        } else if (query.includes("وثائق") || query.includes("جواز") || query.includes("تأشير") || query.includes("صلاحي") || query.includes("منته") || query.includes("غلط") || query.includes("خطأ") || query.includes("تاريخ")) {
+          if (currentCase.id === "yasser") {
+            reply = "أوراقي وجواز سفري سليمان وصالحان تماماً، وتاريخ انتهاء جوازي هو 2031 كما هو مدون.";
+            localStress = 15;
+            localHeart = 70;
+            localCue = "يشير بثقة إلى جوازه.";
+          } else if (currentCase.id === "olivia") {
+            reply = "أوه، أوراق التصوير وجواز السفر... هل هناك مشكلة؟ ربما نسيت تجديده، أرجوك أنا مجرد سائحة!";
+            localStress = 85;
+            localHeart = 125;
+            localCue = "تتعرق وتتراجع خطوة للخلف وتتجنب النظر في عينيك.";
+          } else if (currentCase.id === "karim") {
+            reply = "أوراقي رسمية بالكامل من شركة الاستيراد والتصدير، وتاريخ ميلادي المدون صحيح وسليم.";
+            localStress = 15;
+            localHeart = 72;
+            localCue = "يبتسم ببرود وثقة تامة.";
+          } else if (currentCase.id === "fatima") {
+            reply = "نعم، هذه تأشيرة إنسانية علاجية رسمية لطفلي المريض. أرجوك دقق فيها، كل شيء سليم.";
+            localStress = 20;
+            localHeart = 76;
+            localCue = "تمسح دموعها وتنظر إليك بأمل ورجاء.";
+          } else {
+            reply = currentCase.arabicDiscrepancy ? `بخصوص هذا الأمر... ${currentCase.arabicDiscrepancy}` : "وثائقي سليمة تماماً ولا يوجد بها أي خلل يذكر.";
+            localStress = currentCase.arabicDiscrepancy ? 80 : 20;
+            localHeart = currentCase.arabicDiscrepancy ? 120 : 70;
+            localCue = currentCase.arabicDiscrepancy ? "يتلعثم بشدة ويتجنب التقاء الأعين." : "يجيب بهدوء وثقة.";
+          }
+        } else if (query.includes("توتر") || query.includes("خائف") || query.includes("ريبه") || query.includes("سلوك") || query.includes("nervous")) {
+          if (isGuilty) {
+            reply = "لست متوتراً! السفر لمسافات طويلة عبر الطائرة متعب ومرهق للغاية فقط، صدقني.";
+            localStress = 80;
+            localHeart = 115;
+            localCue = "يرمش بسرعة ويفرك يديه ببعضهما بقلق.";
+          } else {
+            reply = "أنا فقط أشعر بقليل من الرهبة في صالة التحقيق، لكنني لا أخفي شيئاً وصادق تماماً.";
+            localStress = 30;
+            localHeart = 82;
+            localCue = "يتحدث بنبرة ممتنة وهادئة.";
+          }
+        } else if (query.includes("حقيب") || query.includes("أمتع") || query.includes("تخفي") || query.includes("تهريب") || query.includes("آثار") || query.includes("جاسوس") || query.includes("تزوير")) {
+          if (isGuilty) {
+            reply = "لا يوجد أي شيء غير قانوني في حقيبتي! يمكنك تفتيشها... أوه لا، أقصد حقيبتي بها ملابس شخصية فقط!";
+            localStress = 95;
+            localHeart = 140;
+            localCue = "يتراجع للخلف بخوف شديد وتتسع حدقتا عينيه.";
+          } else {
+            reply = "حقيبتي لا تحتوي إلا على أغراضي الشخصية البسيطة. تفضل بتفتيشها إن أردت، فليس لدي ما أخفيه.";
+            localStress = 20;
+            localHeart = 74;
+            localCue = "يضع حقيبته أمامك بكل أريحية وثقة.";
+          }
+        } else {
+          if (isGuilty) {
+            reply = "أنا بريء تماماً وجئت إلى هنا بطريقة قانونية... لماذا تسألني هذه الأسئلة الغريبة؟";
+            localStress = 65;
+            localHeart = 105;
+            localCue = "يتلفت يميناً ويساراً ويبدو حذراً.";
+          } else {
+            reply = "كل شيء تحت تصرفك أيها الضابط. أنا مواطن ملتزم بالقانون وأجيبك بكل صدق.";
+            localStress = 15;
+            localHeart = 70;
+            localCue = "يقف بثبات ويبتسم باحترام.";
+          }
+        }
+      }
+
       setMessages(prev => [
         ...prev,
         {
           role: "model",
-          text: "فشل الاتصال بذكاء الاستجواب. يرجى التحقق من توفير مفتاح API وصحة الخادم.",
-          physicalCue: "يصدر جهاز التحقيق صوتاً متقطعاً"
+          text: reply,
+          physicalCue: localCue
         }
       ]);
-      playSound("alert");
+      setStressLevel(localStress);
+      setHeartRate(localHeart);
+      setPhysicalCue(localCue);
+      playSound("beep");
     } finally {
       setIsInterrogating(false);
     }
@@ -316,9 +416,34 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setDbResult(data);
+      } else {
+        throw new Error("Server responded with error status");
       }
     } catch (err) {
-      console.error(err);
+      console.warn("Using local client-side database search fallback:", err);
+      const query = dbSearchQuery.trim().toLowerCase();
+      const matchedCase = cases.find((c) => {
+        const nameMatch = c.name.toLowerCase().includes(query) || c.arabicName.toLowerCase().includes(query);
+        const passportMatch = c.documents.passport.number.toLowerCase() === query;
+        const visaMatch = c.documents.visa?.number.toLowerCase() === query;
+        return nameMatch || passportMatch || visaMatch;
+      });
+
+      if (matchedCase && matchedCase.wantedDbRecord) {
+        setDbResult({
+          found: true,
+          status: matchedCase.wantedDbRecord.wantedStatus as "clear" | "warning" | "wanted",
+          notes: matchedCase.wantedDbRecord.notes,
+          name: matchedCase.arabicName,
+          passport: matchedCase.documents.passport.number,
+        });
+      } else {
+        setDbResult({
+          found: false,
+          status: "clear",
+          notes: "لا توجد سجلات أمنية أو بلاغات نشطة مرتبطة بهذا الاسم أو رقم الوثيقة. السجل نظيف.",
+        });
+      }
     } finally {
       setSearchingDb(false);
     }
@@ -362,9 +487,54 @@ export default function App() {
         }));
 
         setShowVerdictModal(true);
+      } else {
+        throw new Error("Server verdict responded with error");
       }
     } catch (err) {
-      console.error(err);
+      console.warn("Using local client-side verdict evaluation fallback:", err);
+      const currentCase = cases.find(c => c.id === selectedSuspect.id);
+      if (currentCase) {
+        const expected = currentCase.expectedVerdict as "admit" | "reject" | "arrest";
+        const isCorrect = verdictType === expected;
+        let scoreImpact = isCorrect ? 20 : -15;
+        let isHumanitarian = false;
+        let explanation = currentCase.verdictExplanation;
+
+        if (selectedSuspect.id === "fatima" && verdictType === "admit") {
+          isHumanitarian = true;
+          explanation = "لقد اتخذت قراراً إنسانياً نبيلاً! على الرغم من أن وثائق فاطمة غير مكتملة وقانونياً تفرض ترحيلها، إلا أن تعاطفك مع طفلها المريض أنقذ حياته. إدارة الحدود ستتغاضى عن هذا الخرق لدواعٍ إنسانية.";
+          scoreImpact = 30;
+        }
+
+        const result: VerdictResult = {
+          correct: isCorrect || isHumanitarian,
+          verdict: verdictType,
+          expectedVerdict: expected,
+          explanation: explanation,
+          scoreImpact: scoreImpact,
+          isHumanitarian: isHumanitarian
+        };
+
+        setVerdictResult(result);
+        setScore(prev => Math.max(0, prev + result.scoreImpact));
+        setProcessedCount(prev => prev + 1);
+        if (result.correct) {
+          setCorrectDecisions(prev => prev + 1);
+          playSound("success");
+        } else {
+          playSound("fail");
+        }
+
+        setProcessedIds(prev => ({
+          ...prev,
+          [selectedSuspect.id]: {
+            verdict: verdictType,
+            isCorrect: result.correct
+          }
+        }));
+
+        setShowVerdictModal(true);
+      }
     }
   };
 
